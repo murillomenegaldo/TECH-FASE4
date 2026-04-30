@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+  # ------------------------------------------------------------------
+  # Stock prediction API
+  # ------------------------------------------------------------------
+  api:
+    build: .
+    image: stock-lstm-api:latest
+    container_name: stock_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./saved_model:/app/saved_model   # share trained artefacts
+    environment:
+      - MODEL_PATH=/app/saved_model
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    depends_on: []
+
+  # ------------------------------------------------------------------
+  # Prometheus — scrapes /metrics from the API
+  # ------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------
+  # Grafana — dashboard on top of Prometheus
+  # ------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
